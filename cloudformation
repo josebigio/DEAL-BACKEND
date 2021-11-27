@@ -1,0 +1,146 @@
+    {
+        "Resources": {
+            "VPCFARGATE": {
+                "Type": "AWS::EC2::VPC",
+                "Properties": {
+                    "CidrBlock": "10.0.0.0/16",
+                    "InstanceTenancy": "default",
+                    "EnableDnsSupport": "true",
+                    "EnableDnsHostnames" : "true"
+                }
+            },
+            "INTGATEWAY": {
+                "Type": "AWS::EC2::InternetGateway"
+            },
+            "ATTACHIG": {
+                "Type": "AWS::EC2::VPCGatewayAttachment",
+                "DependsOn": ["VPCFARGATE", "INTGATEWAY"],
+                "Properties": {
+                    "InternetGatewayId" : {"Ref": "INTGATEWAY"},
+                    "VpcId" : {"Ref": "VPCFARGATE"}
+                }
+            },
+            "ROUTETABLE": {
+                "Type" : "AWS::EC2::RouteTable",
+                "DependsOn": ["VPCFARGATE"],
+                "Properties" : {
+                    "VpcId" : {"Ref": "VPCFARGATE"}
+                }
+            },
+            "ROUTE": {
+                "Type": "AWS::EC2::Route",
+                "DependsOn": ["VPCFARGATE", "INTGATEWAY", "ROUTETABLE"],
+                "Properties": {
+                    "RouteTableId": {"Ref": "ROUTETABLE"},
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "GatewayId": {"Ref": "INTGATEWAY"}
+                }
+            },
+            "SUBNETFARGATE": {
+                "Type": "AWS::EC2::Subnet",
+                "DependsOn": ["VPCFARGATE"],
+                "Properties": {
+                    "AvailabilityZone" : "us-east-1a",
+                    "CidrBlock" : "10.0.0.0/24",
+                    "MapPublicIpOnLaunch" : "true",
+                    "VpcId" : {"Ref": "VPCFARGATE"}
+                }
+            },
+            "SUBNETROUTE": {
+                "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+                "DependsOn": ["SUBNETFARGATE", "ROUTETABLE"],
+                "Properties" : {
+                    "RouteTableId" : {"Ref": "ROUTETABLE"},
+                    "SubnetId" : {"Ref": "SUBNETFARGATE"}
+                }
+            },
+            "SGFARGATE": {
+                "Type": "AWS::EC2::SecurityGroup",
+                "DependsOn": ["VPCFARGATE"],
+                "Properties": {
+                    "GroupDescription" : "Fargate Security Group",
+                    "GroupName" : "Fargate-SG",
+                    "SecurityGroupIngress" : [
+                        {
+                            "CidrIp" : "0.0.0.0/0",
+                            "Description" : "Allow HTTP traffic on port 80",
+                            "FromPort" : 80,
+                            "IpProtocol" : "tcp",
+                            "ToPort" : 80
+                        },{
+                            "CidrIp": "0.0.0.0/0",
+                            "Description": "Allow HTTPS traffic on port 443",
+                            "FromPort": 443,
+                            "IpProtocol": "tcp",
+                            "ToPort": 443
+                        }
+                    ],
+                    "VpcId" : {"Ref": "VPCFARGATE"}
+                }
+            },
+            "FARGATECLUSTER": {
+                "Type": "AWS::ECS::Cluster",
+                "Properties": {
+                    "ClusterName": "Cluster-CF"
+                }
+            },
+            "ECSTASK": {
+                "Type": "AWS::ECS::TaskDefinition",
+                "Properties": {
+                    "ContainerDefinitions": [
+                        {
+                            "Name": "deal-backend",
+                            "Image": "196461569389.dkr.ecr.us-east-1.amazonaws.com/deal-backend:latest",
+                            "PortMappings": [
+                                {"ContainerPort": 3000, "HostPort": 3000, "Protocol": "tcp"}
+                            ],
+                            "LogConfiguration": {
+                                "LogDriver": "awslogs",
+                                "Options": {
+                                    "awslogs-group": "/ecs/task-medium",
+                                    "awslogs-region": "us-east-1",
+                                    "awslogs-stream-prefix": "ecs"
+                                }
+                            }
+                        }
+                    ],
+                    "Cpu": 512,
+                    "Memory": 1024,
+                    "NetworkMode": "awsvpc",
+                    "RequiresCompatibilities": ["FARGATE"],
+                    "TaskRoleArn": "ecsTaskExecutionRole",
+                    "ExecutionRoleArn": "ecsTaskExecutionRole",
+                    "Tags": [
+                        {
+                            "Key": "created_by",
+                            "Value": "CloudFormation"
+                        }
+                    ]
+                }
+            },
+            "SERVICE": {
+                "Type": "AWS::ECS::Service",
+                "DependsOn": ["ECSTASK", "FARGATECLUSTER", "SUBNETFARGATE", "SGFARGATE"],
+                "Properties": {
+                    "Cluster" : "Cluster-CF",
+                    "DeploymentConfiguration" : {
+                        "MaximumPercent": 200,
+                        "MinimumHealthyPercent": 100
+                    },
+                    "DeploymentController" : {"Type": "ECS"},
+                    "DesiredCount" : 1,
+                    "LaunchType" : "FARGATE",
+                    "NetworkConfiguration" : {
+                        "AwsvpcConfiguration": {
+                            "AssignPublicIp" : "ENABLED",
+                            "Subnets": [{"Ref": "SUBNETFARGATE"}],
+                            "SecurityGroups": [{"Ref": "SGFARGATE"}]
+                        }
+                    },
+                    "SchedulingStrategy" : "REPLICA",
+                    "ServiceName" : "Service-CF",
+                    "TaskDefinition" : {"Ref": "ECSTASK"}
+                }
+            }
+        }
+    }
