@@ -60,16 +60,15 @@ export const getAllMeetups = async () => {
 };
 
 export const uploadFile = async (buffer, name) => {
-  const key = `s3://${REELS_BUCKET_NAME}/${name}`
   const params = {
     Body: buffer,
     Bucket: REELS_BUCKET_NAME,
-    Key: `${name}`,
+    Key: name,
   };
   try {
     const s3Response = await S3.putObject(params).promise();
     console.log("success uploading file to s3", s3Response);
-    const dynamoDbResponse = await saveFileToDb(key)
+    const dynamoDbResponse = await saveFileToDb(name)
     return key;
   } catch (error) {
     console.log("error uploading file")
@@ -100,6 +99,7 @@ const saveFileToDb = async (s3Key) => {
 }
 
 export const getAllReels = async (userId) => {
+
   var params = {
     KeyConditionExpression: 'userId = :userId',
     ExpressionAttributeValues: {
@@ -107,22 +107,25 @@ export const getAllReels = async (userId) => {
     },
     TableName: REELS_TABLE_NAME
   };
-  return DynamoDB.query(params).promise()
-  .then(response => response)
-  .catch(error=>error)
-  // try {
-  //   var params = {
-  //     KeyConditionExpression: 'userId = :userId',
-  //     ExpressionAttributeValues: {
-  //       ':userId': { 'S': userId }
-  //     },
-  //     TableName: REELS_TABLE_NAME
-  //   };
-  //   var result = await DynamoDB.query(params).promise()
-  //   console.log(JSON.stringify(result))
-  //   return result
-  // } catch (error) {
-  //   console.error(error);
-  //   return error
-  // }
+  try {
+    console.log("getAllReels start")
+    const reelsList = await DynamoDB.query(params).promise()
+    console.log(reelsList.Items)
+    return reelsList.Items.map(reel=> {
+      return getSignedUrl(REELS_BUCKET_NAME, reel.s3Key.S)
+    })
+  }
+  catch (error) {
+    return error
+  }
+}
+
+const getSignedUrl = (bucket, key) => {
+  const signedKey =  S3.getSignedUrl('getObject', {
+    Bucket: bucket,
+    Key: key,
+    Expires: 60 * 5
+  })
+  console.log(signedKey)
+  return signedKey
 }
