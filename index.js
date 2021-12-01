@@ -5,7 +5,7 @@ import multiparty from 'multiparty'
 import fs from 'fs'
 import { v4 } from 'uuid'
 
-
+const PORT = process.env.PORT || 8081;
 // const fileType = require('file-type');
 const app = express();
 
@@ -74,7 +74,7 @@ app.post('/addNewMeetup', (req, resp)=>{
     })
 })
 
-app.listen(3000, ()=>{
-    console.log("Listening on port 3000")
+app.listen(PORT, ()=>{
+    console.log(`Listening on port ${PORT}`)
 })
 
